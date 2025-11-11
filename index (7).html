@@ -1,0 +1,186 @@
+
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pulla Klikkeri</title>
+  <style>
+    body { font-family: sans-serif; background: #f7f6f2; color: #111; text-align: center; padding: 18px; }
+    h1 { font-size: 28px; margin: 6px; }
+    .big-btn { width: 220px; height: 220px; border-radius: 50%; font-size: 64px; border: none; background: linear-gradient(#ffd27a,#ffb347); box-shadow: 0 6px 18px rgba(0,0,0,0.15); cursor: pointer; }
+    .small { padding: 6px 8px; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; }
+    .tiny { font-size: 12px; color: #555; }
+    .top-right { position: absolute; top: 12px; right: 12px; text-align: right; }
+    canvas { background: #fff; border-radius: 6px; margin-top: 10px; }
+    .market-item { margin: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Pulla Klikkeri</h1>
+  <div class="top-right">
+    <button id="prestigeBtn" class="small">🔁 Aloita alusta</button><br>
+    <label class="tiny">Kaupan aikaväli:</label>
+    <select id="tradeIntervalSelect">
+      <option value="1000">1 sekunti</option>
+      <option value="60000">60 sekuntia</option>
+    </select>
+    <div id="prestigeMsg" class="tiny"></div>
+  </div>
+
+  <p>Pullat: <span id="count">0</span></p>
+  <p>Tuotanto: <span id="prod">0</span> /s</p>
+  <button id="clickBtn" class="big-btn">🍪</button>
+
+  <h2>Apurit</h2>
+  <div>
+    <div>Mummoja: <span id="mummoCount">0</span> <button onclick="buyHelper('mummo')">Osta (10)</button></div>
+    <div>Setiä: <span id="setaCount">0</span> <button onclick="buyHelper('seta')">Osta (50)</button></div>
+  </div>
+
+  <h2>Markkinat</h2>
+  <div id="market"></div>
+  <canvas id="marketChart" width="400" height="200"></canvas>
+  <div class="tiny">🔴 Sokeri 🟢 Voi 🔵 Muna</div>
+  <div id="trendMsg" class="tiny"></div>
+  <div id="history" class="tiny"></div>
+
+  <script>
+    let count = 0;
+    let multiplier = 1;
+    let mummoCount = 0, setaCount = 0;
+    const prestigeThreshold = 100000;
+    const marketKeys = ['sokeri', 'voi', 'muna'];
+    let marketPrices = { sokeri: 10, voi: 20, muna: 30 };
+    let marketInv = { sokeri: 0, voi: 0, muna: 0 };
+    let priceHistory = { sokeri: [], voi: [], muna: [] };
+    let historyLog = [];
+
+    function totalProduction() {
+      return mummoCount * 1 + setaCount * 5;
+    }
+
+    function updateUI() {
+      document.getElementById('count').textContent = Math.floor(count);
+      document.getElementById('prod').textContent = totalProduction();
+      document.getElementById('mummoCount').textContent = mummoCount;
+      document.getElementById('setaCount').textContent = setaCount;
+      updateMarketUI();
+    }
+
+    function buyHelper(type) {
+      const cost = type === 'mummo' ? 10 : 50;
+      if (count >= cost) {
+        count -= cost;
+        if (type === 'mummo') mummoCount++;
+        else setaCount++;
+        updateUI();
+      }
+    }
+
+    function updateMarketUI() {
+      const container = document.getElementById('market');
+      container.innerHTML = '';
+      marketKeys.forEach(k => {
+        const div = document.createElement('div');
+        div.className = 'market-item';
+        div.innerHTML = `${k}: ${marketPrices[k]} | Varasto: ${marketInv[k]} ` +
+          `<button onclick="buyItem('${k}')">Osta</button> ` +
+          `<button onclick="sellItem('${k}')">Myy</button>`;
+        container.appendChild(div);
+      });
+    }
+
+    function buyItem(item) {
+      if (count >= marketPrices[item]) {
+        count -= marketPrices[item];
+        marketInv[item]++;
+        logHistory(`Ostit ${item}`);
+        updateUI();
+      }
+    }
+
+    function sellItem(item) {
+      if (marketInv[item] > 0) {
+        marketInv[item]--;
+        count += marketPrices[item];
+        logHistory(`Myit ${item}`);
+        updateUI();
+      }
+    }
+
+    function logHistory(msg) {
+      historyLog.unshift(msg);
+      if (historyLog.length > 10) historyLog.pop();
+      document.getElementById('history').innerHTML = historyLog.join('<br>');
+    }
+
+    function updatePrices() {
+      marketKeys.forEach(k => {
+        const change = Math.floor(Math.random() * 5 - 2);
+        marketPrices[k] = Math.max(1, marketPrices[k] + change);
+        priceHistory[k].push(marketPrices[k]);
+        if (priceHistory[k].length > 50) priceHistory[k].shift();
+      });
+      updateTrend();
+      drawMarketChart();
+    }
+
+    function updateTrend() {
+      let msg = '';
+      marketKeys.forEach(k => {
+        const len = priceHistory[k].length;
+        if (len >= 2) {
+          const trend = priceHistory[k][len-1] > priceHistory[k][len-2] ? 'nousussa' : 'laskussa';
+          msg += `${k}: ${marketPrices[k]} (${trend}) `;
+        }
+      });
+      document.getElementById('trendMsg').textContent = msg;
+    }
+
+    function drawMarketChart() {
+      const canvas = document.getElementById('marketChart');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const colors = { sokeri: 'red', voi: 'green', muna: 'blue' };
+      marketKeys.forEach(k => {
+        ctx.beginPath();
+        ctx.strokeStyle = colors[k];
+        priceHistory[k].forEach((val, i) => {
+          const x = i * 8;
+          const y = canvas.height - val;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+    }
+
+    document.getElementById('clickBtn').addEventListener('click', () => {
+      count += multiplier;
+      updateUI();
+    });
+
+    document.getElementById('prestigeBtn').addEventListener('click', () => {
+      if (count >= prestigeThreshold) {
+        multiplier *= 2;
+        count = 0;
+        mummoCount = 0;
+        setaCount = 0;
+        document.getElementById('prestigeMsg').textContent = `Uusi kierros aloitettu! Kerroin nyt ${multiplier}x.`;
+        updateUI();
+      } else {
+        document.getElementById('prestigeMsg').textContent = 'Tarvitset enemmän pullia aloittaaksesi alusta!';
+      }
+    });
+
+    setInterval(() => {
+      count += totalProduction();
+      updateUI();
+    }, 1000);
+
+    setInterval(updatePrices, 2000);
+    updateUI();
+  </script>
+</body>
+</html>
